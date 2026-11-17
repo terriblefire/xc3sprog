@@ -1,79 +1,66 @@
 #include <iogpiodpi.h>
 #include <iostream>
+#include <stdio.h>
 
 
 IOGPIODPi::IOGPIODPi(int tms, int tck, int tdi, int tdo)
  : TMSPin(tms), TCKPin(tck), TDIPin(tdi), TDOPin(tdo)
 {
+    TMSline = TCKline = TDIline = TDOline = NULL;
     chip = gpiod_chip_open_by_name("gpiochip0"); 
-
     if (!chip) {
-    perror("Open chip failed");
+        perror("Open chip failed");
+        return;
     }
 
     TMSline = gpiod_chip_get_line(chip, TMSPin);
     TCKline = gpiod_chip_get_line(chip, TCKPin);
     TDIline = gpiod_chip_get_line(chip, TDIPin);
     TDOline = gpiod_chip_get_line(chip, TDOPin);
-
-    if (!TMSline) {
-        perror("TMSline line config failed");
-        gpiod_chip_close(chip);
+    if (!TMSline || !TCKline || !TDIline || !TDOline) {
+        perror("JTAG line config failed");
+        goto fail;
     }
-
-    if (!TCKline) {
-        perror("TCKline line config failed");
-        gpiod_chip_close(chip);
-    }
-
-    if (!TDIline) {
-        perror("TDIline line config failed");
-        gpiod_chip_close(chip);
-    }
-
-    if (!TDOline) {
-        perror("TDOline line config failed");
-        gpiod_chip_close(chip);
-    }
-
-    int ret;
-
-    ret = gpiod_line_request_output(TMSline, "Consumer", 0);
-    if (ret < 0) {
+    if (gpiod_line_request_output(TMSline, "Consumer", 0) < 0) {
         perror("Request TMSline as output failed");
-        gpiod_line_release(TMSline);
-        gpiod_chip_close(chip);
+        goto fail;
     }
-
-    ret = gpiod_line_request_output(TCKline, "Consumer", 0);
-    if (ret < 0) {
+    if (gpiod_line_request_output(TCKline, "Consumer", 0) < 0) {
         perror("Request TCKline as output failed");
-        gpiod_line_release(TCKline);
-        gpiod_chip_close(chip);
+        goto fail;
     }
-
-    ret = gpiod_line_request_output(TDIline, "Consumer", 0);
-    if (ret < 0) {
+    if (gpiod_line_request_output(TDIline, "Consumer", 0) < 0) {
         perror("Request TDIline as output failed");
-        gpiod_line_release(TDIline);
-        gpiod_chip_close(chip);
+        goto fail;
     }
-
-    ret = gpiod_line_request_input(TDOline, "Consumer");
-    if (ret < 0) {
+    if (gpiod_line_request_input(TDOline, "Consumer") < 0) {
         perror("Request TDOline as input failed");
-        gpiod_line_release(TDOline);
-        gpiod_chip_close(chip);
+        goto fail;
     }
+    return;
 
+fail:
+    /* closing the chip releases every line requested from it */
+    gpiod_chip_close(chip);
+    chip = NULL;
+    TMSline = TCKline = TDIline = TDOline = NULL;
+}
+
+/* The constructor cannot fail: report lines it could not get here, so
+   xc3sprog stops instead of clocking JTAG through missing lines. */
+int IOGPIODPi::Init(struct cable_t *cable, const char *devopt, unsigned int freq)
+{
+    if (!chip)
+    {
+        fprintf(stderr, "Could not get the JTAG GPIO lines\n");
+        return 1;
+    }
+    return 0;
 }
 
 IOGPIODPi::~IOGPIODPi()
 {
-        gpiod_line_release(TMSline);
-        gpiod_line_release(TCKline);
-        gpiod_line_release(TDIline);
-        gpiod_line_release(TDOline);
+    if (chip)
         gpiod_chip_close(chip);
 }
 
